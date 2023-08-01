@@ -3,10 +3,12 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/JuanFernandez87/go-vue-login-with-google/models"
 	"github.com/JuanFernandez87/go-vue-login-with-google/utils"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -21,8 +23,40 @@ func NewUserServiceImpl(collection *mongo.Collection, ctx context.Context) UserS
 }
 
 // FindUserByID
+func (us *UserServiceImpl) FindUserById(id string) (*models.DBResponse, error) {
+	oid, _ := primitive.ObjectIDFromHex(id)
+
+	var user *models.DBResponse
+
+	query := bson.M{"_id": oid}
+	err := us.collection.FindOne(us.ctx, query).Decode(&user)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return &models.DBResponse{}, err
+		}
+		return nil, err
+	}
+
+	return user, nil
+}
 
 // FindUserByEmail
+func (us *UserServiceImpl) FindUserByEmail(email string) (*models.DBResponse, error) {
+	var user *models.DBResponse
+
+	query := bson.M{"email": strings.ToLower(email)}
+	err := us.collection.FindOne(us.ctx, query).Decode(&user)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return &models.DBResponse{}, err
+		}
+		return nil, err
+	}
+
+	return user, nil
+}
 
 // UpsertUser
 func (uc *UserServiceImpl) UpsertUser(email string, data *models.UpdateDBUser) (*models.DBResponse, error) {
