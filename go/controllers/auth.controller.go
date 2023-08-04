@@ -3,133 +3,83 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/JuanFernandez87/go-vue-login-with-google/config"
-	"github.com/JuanFernandez87/go-vue-login-with-google/models"
-	"github.com/JuanFernandez87/go-vue-login-with-google/services"
-	"github.com/JuanFernandez87/go-vue-login-with-google/utils"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/wpcodevo/google-github-oath2-golang/initializers"
+	"github.com/wpcodevo/google-github-oath2-golang/models"
+	"github.com/wpcodevo/google-github-oath2-golang/utils"
 )
 
-type AuthController struct {
-	authService services.AuthService
-	userService services.UserService
-}
-
-func NewAuthController(authService services.AuthService, userService services.UserService) AuthController {
-	return AuthController{authService, userService}
-}
-
 // SignUp User
-func (ac *AuthController) SignUpUser(ctx *gin.Context) {
-	var user *models.SignUpInput
+func SignUpUser(ctx *gin.Context) {
+	var payload *models.RegisterUserInput
 
-	if err := ctx.ShouldBindJSON(&user); err != nil {
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	if user.Password != user.PasswordConfirm {
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Passwords do not match"})
+	now := time.Now()
+	newUser := models.User{
+		Name:      payload.Name,
+		Email:     strings.ToLower(payload.Email),
+		Password:  payload.Password,
+		Role:      "user",
+		Verified:  true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	result := initializers.DB.Create(&newUser)
+
+	if result.Error != nil && strings.Contains(result.Error.Error(), "UNIQUE constraint failed: users.email") {
+		ctx.JSON(http.StatusConflict, gin.H{"status": "fail", "message": "User with that email already exists"})
+		return
+	} else if result.Error != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"status": "error", "message": "Something bad happened"})
 		return
 	}
 
-	newUser, err := ac.authService.SignUpUser(user)
-
-	if err != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{"status": "error", "message": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusCreated, gin.H{"status": "success", "data": gin.H{"user": models.FilteredResponse(newUser)}})
+	ctx.JSON(http.StatusCreated, gin.H{"status": "success", "data": gin.H{"user": models.FilteredResponse(&newUser)}})
 }
 
 // SignIn User
-func (ac *AuthController) SignInUser(ctx *gin.Context) {
-	var credentials *models.SignInInput
+func SignInUser(ctx *gin.Context) {
+	var payload *models.LoginUserInput
 
-	if err := ctx.ShouldBindJSON(&credentials); err != nil {
+	if err := ctx.ShouldBindJSON(&payload); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	user, err := ac.userService.FindUserByEmail(credentials.Email)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid email or password"})
-			return
-		}
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
-
-	if err := utils.VerifyPassword(user.Password, credentials.Password); err != nil {
+	var user models.User
+	result := initializers.DB.First(&user, "email = ?", strings.ToLower(payload.Email))
+	if result.Error != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid email or Password"})
 		return
 	}
 
-	config, _ := config.LoadConfig(".")
+	config, _ := initializers.LoadConfig(".")
 
-	// Generate Tokens
-	access_token, err := utils.CreateToken(config.AccessTokenExpiresIn, user.ID, config.AccessTokenPrivateKey)
+	token, err := utils.GenerateToken(config.TokenExpiresIn, user.ID, config.JWTTokenSecret)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	refresh_token, err := utils.CreateToken(config.RefreshTokenExpiresIn, user.ID, config.RefreshTokenPrivateKey)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
+	ctx.SetCookie("token", token, config.TokenMaxAge*60, "/", "localhost", false, true)
 
-	ctx.SetCookie("access_token", access_token, config.AccessTokenMaxAge*60, "/", "localhost", false, true)
-	ctx.SetCookie("refresh_token", refresh_token, config.RefreshTokenMaxAge*60, "/", "localhost", false, true)
-	ctx.SetCookie("logged_in", "true", config.AccessTokenMaxAge*60, "/", "localhost", false, false)
-
-	ctx.JSON(http.StatusOK, gin.H{"status": "success", "access_token": access_token})
+	ctx.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
-// Refresh Access Token
-func (ac *AuthController) RefreshAccessToken(ctx *gin.Context) {
-	message := "could not refresh access token"
-
-	cookie, err := ctx.Cookie("refresh_token")
-
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": message})
-		return
-	}
-
-	config, _ := config.LoadConfig(".")
-
-	sub, err := utils.ValidateToken(cookie, config.RefreshTokenPublicKey)
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
-
-	user, err := ac.userService.FindUserById(fmt.Sprint(sub))
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": "the user belonging to this token no logger exists"})
-		return
-	}
-
-	access_token, err := utils.CreateToken(config.AccessTokenExpiresIn, user.ID, config.AccessTokenPrivateKey)
-	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
-
-	ctx.SetCookie("access_token", access_token, config.AccessTokenMaxAge*60, "/", "localhost", false, true)
-	ctx.SetCookie("logged_in", "true", config.AccessTokenMaxAge*60, "/", "localhost", false, false)
-
-	ctx.JSON(http.StatusOK, gin.H{"status": "success", "access_token": access_token})
+func LogoutUser(ctx *gin.Context) {
+	ctx.SetCookie("token", "", -1, "/", "localhost", false, true)
+	ctx.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
-func (ac *AuthController) GoogleOAuth(ctx *gin.Context) {
+func GoogleOAuth(ctx *gin.Context) {
 	code := ctx.Query("code")
 	var pathUrl string = "/"
 
@@ -142,54 +92,51 @@ func (ac *AuthController) GoogleOAuth(ctx *gin.Context) {
 		return
 	}
 
-	// Use the code to get the id and access tokens
 	tokenRes, err := utils.GetGoogleOauthToken(code)
 
 	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
+		return
 	}
 
-	user, err := utils.GetGoogleUser(tokenRes.Access_token, tokenRes.Id_token)
+	google_user, err := utils.GetGoogleUser(tokenRes.Access_token, tokenRes.Id_token)
 
 	if err != nil {
 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
+		return
 	}
 
-	createdAt := time.Now()
-	resBody := &models.UpdateDBUser{
-		Email:     user.Email,
-		Name:      user.Name,
-		Photo:     user.Picture,
-		Provider:  "google",
+	now := time.Now()
+	email := strings.ToLower(google_user.Email)
+
+	user_data := models.User{
+		Name:      google_user.Name,
+		Email:     email,
+		Password:  "",
+		Photo:     google_user.Picture,
+		Provider:  "Google",
 		Role:      "user",
 		Verified:  true,
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
-	updatedUser, err := ac.userService.UpsertUser(user.Email, resBody)
-	if err != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
+	if initializers.DB.Model(&user_data).Where("email = ?", email).Updates(&user_data).RowsAffected == 0 {
+		initializers.DB.Create(&user_data)
 	}
 
-	config, _ := config.LoadConfig(".")
+	var user models.User
+	initializers.DB.First(&user, "email = ?", email)
 
-	// Generate Tokens
-	access_token, err := utils.CreateToken(config.AccessTokenExpiresIn, updatedUser.ID.Hex(), config.AccessTokenPrivateKey)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
+	config, _ := initializers.LoadConfig(".")
 
-	refresh_token, err := utils.CreateToken(config.RefreshTokenExpiresIn, updatedUser.ID.Hex(), config.RefreshTokenPrivateKey)
+	token, err := utils.GenerateToken(config.TokenExpiresIn, user.ID.String(), config.JWTTokenSecret)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	ctx.SetCookie("access_token", access_token, config.AccessTokenMaxAge*60, "/", "localhost", false, true)
-	ctx.SetCookie("refresh_token", refresh_token, config.RefreshTokenMaxAge*60, "/", "localhost", false, true)
-	ctx.SetCookie("logged_in", "true", config.AccessTokenMaxAge*60, "/", "localhost", false, false)
+	ctx.SetCookie("token", token, config.TokenMaxAge*60, "/", "localhost", false, true)
 
-	ctx.Redirect(http.StatusTemporaryRedirect, fmt.Sprint(config.ClientOrigin, pathUrl))
+	ctx.Redirect(http.StatusTemporaryRedirect, fmt.Sprint(config.FrontEndOrigin, pathUrl))
 }

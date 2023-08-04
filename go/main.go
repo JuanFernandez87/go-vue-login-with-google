@@ -1,92 +1,47 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/JuanFernandez87/go-vue-login-with-google/config"
-	"github.com/JuanFernandez87/go-vue-login-with-google/controllers"
-	"github.com/JuanFernandez87/go-vue-login-with-google/routes"
-	"github.com/JuanFernandez87/go-vue-login-with-google/services"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"github.com/wpcodevo/google-github-oath2-golang/controllers"
+	"github.com/wpcodevo/google-github-oath2-golang/initializers"
+	"github.com/wpcodevo/google-github-oath2-golang/middleware"
 )
 
-var (
-	server      *gin.Engine
-	ctx         context.Context
-	mongoclient *mongo.Client
-
-	userService         services.UserService
-	UserController      controllers.UserController
-	UserRouteController routes.UserRouteController
-
-	authCollection         *mongo.Collection
-	authService            services.AuthService
-	AuthController         controllers.AuthController
-	AuthRouteController    routes.AuthRouteController
-	SessionRouteController routes.SessionRouteController
-)
+var server *gin.Engine
 
 func init() {
-	config, err := config.LoadConfig(".")
-	if err != nil {
-		log.Fatal("Could not load environment variables", err)
-	}
-
-	ctx = context.TODO()
-
-	// Connect to MongoDB
-	mongoconn := options.Client().ApplyURI(config.DBUri)
-	mongoclient, err := mongo.Connect(ctx, mongoconn)
-
-	if err != nil {
-		panic(err)
-	}
-
-	if err := mongoclient.Ping(ctx, readpref.Primary()); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("MongoDB successfully connected...")
-
-	// Collections
-	authCollection = mongoclient.Database("golang_mongodb").Collection("users")
-	userService = services.NewUserServiceImpl(authCollection, ctx)
-	authService = services.NewAuthService(authCollection, ctx)
-	AuthController = controllers.NewAuthController(authService, userService)
-	AuthRouteController = routes.NewAuthRouteController(AuthController)
-	SessionRouteController = routes.NewSessionRouteController(AuthController)
-
-	UserController = controllers.NewUserController(userService)
-	UserRouteController = routes.NewRouteUserController(UserController)
+	initializers.ConnectDB()
 
 	server = gin.Default()
 }
 
 func main() {
-	config, err := config.LoadConfig(".")
-
-	if err != nil {
-		log.Fatal("Could not load config", err)
-	}
-
-	defer mongoclient.Disconnect(ctx)
-
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"http://localhost:8000", "http://localhost:3000"}
+	corsConfig.AllowOrigins = []string{"http://localhost:3000"}
 	corsConfig.AllowCredentials = true
 
 	server.Use(cors.New(corsConfig))
 
 	router := server.Group("/api")
+	router.GET("/healthchecker", func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"status": "success", "message": "Implement Google OAuth2 in Golang"})
+	})
 
-	AuthRouteController.AuthRoute(router)
-	UserRouteController.UserRoute(router, userService)
-	SessionRouteController.SessionRoute(router)
-	log.Fatal(server.Run(":" + config.Port))
+	auth_router := router.Group("/auth")
+	auth_router.POST("/register", controllers.SignUpUser)
+	auth_router.POST("/login", controllers.SignInUser)
+	auth_router.GET("/logout", middleware.DeserializeUser(), controllers.LogoutUser)
+
+	router.GET("/sessions/oauth/google", controllers.GoogleOAuth)
+	router.GET("/users/me", middleware.DeserializeUser(), controllers.GetMe)
+
+	server.NoRoute(func(ctx *gin.Context) {
+		ctx.JSON(http.StatusNotFound, gin.H{"status": "error", "message": "Route Not Found"})
+	})
+
+	log.Fatal(server.Run(":" + "8000"))
 }

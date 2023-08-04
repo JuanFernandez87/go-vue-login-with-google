@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/JuanFernandez87/go-vue-login-with-google/config"
+	"github.com/wpcodevo/google-github-oath2-golang/initializers"
 )
 
 type GoogleOauthToken struct {
@@ -32,7 +32,7 @@ type GoogleUserResult struct {
 func GetGoogleOauthToken(code string) (*GoogleOauthToken, error) {
 	const rootURl = "https://oauth2.googleapis.com/token"
 
-	config, _ := config.LoadConfig(".")
+	config, _ := initializers.LoadConfig(".")
 	values := url.Values{}
 	values.Add("grant_type", "authorization_code")
 	values.Add("code", code)
@@ -61,14 +61,15 @@ func GetGoogleOauthToken(code string) (*GoogleOauthToken, error) {
 		return nil, errors.New("could not retrieve token")
 	}
 
-	resBody, err := ioutil.ReadAll(res.Body)
+	var resBody bytes.Buffer
+	_, err = io.Copy(&resBody, res.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	var GoogleOauthTokenRes map[string]interface{}
 
-	if err := json.Unmarshal(resBody, &GoogleOauthTokenRes); err != nil {
+	if err := json.Unmarshal(resBody.Bytes(), &GoogleOauthTokenRes); err != nil {
 		return nil, err
 	}
 
@@ -103,14 +104,15 @@ func GetGoogleUser(access_token string, id_token string) (*GoogleUserResult, err
 		return nil, errors.New("could not retrieve user")
 	}
 
-	resBody, err := ioutil.ReadAll(res.Body)
+	var resBody bytes.Buffer
+	_, err = io.Copy(&resBody, res.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	var GoogleUserRes map[string]interface{}
 
-	if err := json.Unmarshal(resBody, &GoogleUserRes); err != nil {
+	if err := json.Unmarshal(resBody.Bytes(), &GoogleUserRes); err != nil {
 		return nil, err
 	}
 

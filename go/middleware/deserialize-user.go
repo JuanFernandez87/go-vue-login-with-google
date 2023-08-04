@@ -5,45 +5,47 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/JuanFernandez87/go-vue-login-with-google/config"
-	"github.com/JuanFernandez87/go-vue-login-with-google/services"
-	"github.com/JuanFernandez87/go-vue-login-with-google/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/wpcodevo/google-github-oath2-golang/initializers"
+	"github.com/wpcodevo/google-github-oath2-golang/models"
+	"github.com/wpcodevo/google-github-oath2-golang/utils"
 )
 
-func DeserializeUser(userService services.UserService) gin.HandlerFunc {
+func DeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var access_token string
-		cookie, err := ctx.Cookie("access_token")
+		var token string
+		cookie, err := ctx.Cookie("token")
 
 		authorizationHeader := ctx.Request.Header.Get("Authorization")
 		fields := strings.Fields(authorizationHeader)
 
 		if len(fields) != 0 && fields[0] == "Bearer" {
-			access_token = fields[1]
+			token = fields[1]
 		} else if err == nil {
-			access_token = cookie
+			token = cookie
 		}
 
-		if access_token == "" {
+		if token == "" {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "You are not logged in"})
 			return
 		}
 
-		config, _ := config.LoadConfig(".")
-		sub, err := utils.ValidateToken(access_token, config.AccessTokenPublicKey)
+		config, _ := initializers.LoadConfig(".")
+		sub, err := utils.ValidateToken(token, config.JWTTokenSecret)
 		if err != nil {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": err.Error()})
 			return
 		}
 
-		user, err := userService.FindUserById(fmt.Sprint(sub))
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "The user belonging to this token no logger exists"})
+		var user models.User
+		result := initializers.DB.First(&user, "id = ?", fmt.Sprint(sub))
+		if result.Error != nil {
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": "the user belonging to this token no logger exists"})
 			return
 		}
 
 		ctx.Set("currentUser", user)
 		ctx.Next()
+
 	}
 }

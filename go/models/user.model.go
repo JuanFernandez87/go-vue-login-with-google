@@ -3,74 +3,63 @@ package models
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	uuid "github.com/satori/go.uuid"
+	"gorm.io/gorm"
 )
 
-type SignUpInput struct {
-	Name            string    `json:"name" bson:"name" binding:"required"`
-	Email           string    `json:"email" bson:"email" binding:"required"`
-	Password        string    `json:"password" bson:"password" binding:"required,min=8"`
-	PasswordConfirm string    `json:"passwordConfirm" bson:"passwordConfirm,omitempty" binding:"required"`
-	Role            string    `json:"role" bson:"role"`
-	Provider        string    `json:"provider,omitempty" bson:"provider,omitempty"`
-	Photo           string    `json:"photo,omitempty" bson:"photo,omitempty"`
-	Verified        bool      `json:"verified" bson:"verified"`
-	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" bson:"updated_at"`
+type User struct {
+	ID       uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name     string    `gorm:"type:varchar(100);not null"`
+	Email    string    `gorm:"type:varchar(100);uniqueIndex;not null"`
+	Password string    `gorm:"not null"`
+
+	Role  string `gorm:"type:varchar(20);default:'user';"`
+	Photo string `gorm:"default:'default.png';"`
+
+	Verified  bool      `gorm:"default:false;"`
+	Provider  string    `gorm:"default:'local';"`
+	CreatedAt time.Time `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null"`
 }
 
-type SignInInput struct {
-	Email    string `json:"email" bson:"email" binding:"required"`
-	Password string `json:"password" bson:"password" binding:"required"`
+func (user *User) BeforeCreate(*gorm.DB) error {
+	user.ID = uuid.NewV4()
+
+	return nil
 }
 
-type DBResponse struct {
-	ID              primitive.ObjectID `json:"id" bson:"_id"`
-	Name            string             `json:"name" bson:"name"`
-	Email           string             `json:"email" bson:"email"`
-	Password        string             `json:"password" bson:"password"`
-	PasswordConfirm string             `json:"passwordConfirm,omitempty" bson:"passwordConfirm,omitempty"`
-	Provider        string             `json:"provider" bson:"provider"`
-	Photo           string             `json:"photo,omitempty" bson:"photo,omitempty"`
-	Role            string             `json:"role" bson:"role"`
-	Verified        bool               `json:"verified" bson:"verified"`
-	CreatedAt       time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at" bson:"updated_at"`
+type RegisterUserInput struct {
+	Name     string `json:"name" binding:"required"`
+	Email    string `json:"email" bindinig:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type LoginUserInput struct {
+	Email    string `json:"email" bindinig:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 type UserResponse struct {
-	ID        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	Name      string             `json:"name,omitempty" bson:"name,omitempty"`
-	Email     string             `json:"email,omitempty" bson:"email,omitempty"`
-	Role      string             `json:"role,omitempty" bson:"role,omitempty"`
-	Photo     string             `json:"photo,omitempty" bson:"photo,omitempty"`
-	Provider  string             `json:"provider" bson:"provider"`
-	CreatedAt time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at" bson:"updated_at"`
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Photo     string `json:"photo,omitempty"`
+	Verified  bool   `json:"verified,omitempty"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
-type UpdateDBUser struct {
-	ID              primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	Name            string             `json:"name,omitempty" bson:"name,omitempty"`
-	Email           string             `json:"email,omitempty" bson:"email,omitempty"`
-	Password        string             `json:"password,omitempty" bson:"password,omitempty"`
-	PasswordConfirm string             `json:"passwordConfirm,omitempty" bson:"passwordConfirm,omitempty"`
-	Role            string             `json:"role,omitempty" bson:"role,omitempty"`
-	Provider        string             `json:"provider" bson:"provider"`
-	Photo           string             `json:"photo,omitempty" bson:"photo,omitempty"`
-	Verified        bool               `json:"verified,omitempty" bson:"verified,omitempty"`
-	CreatedAt       time.Time          `json:"created_at,omitempty" bson:"created_at,omitempty"`
-	UpdatedAt       time.Time          `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
-}
-
-func FilteredResponse(user *DBResponse) UserResponse {
+func FilteredResponse(user *User) UserResponse {
 	return UserResponse{
-		ID:        user.ID,
+		ID:        user.ID.String(),
 		Email:     user.Email,
 		Name:      user.Name,
 		Role:      user.Role,
-		Provider:  user.Provider,
+		Verified:  user.Verified,
 		Photo:     user.Photo,
+		Provider:  user.Provider,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 	}
