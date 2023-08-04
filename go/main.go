@@ -6,9 +6,9 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/wpcodevo/google-github-oath2-golang/controllers"
-	"github.com/wpcodevo/google-github-oath2-golang/initializers"
-	"github.com/wpcodevo/google-github-oath2-golang/middleware"
+	"github.com/JuanFernandez87/go-vue-login-with-google/controllers"
+	"github.com/JuanFernandez87/go-vue-login-with-google/initializers"
+	"github.com/JuanFernandez87/go-vue-login-with-google/middleware"
 )
 
 var server *gin.Engine

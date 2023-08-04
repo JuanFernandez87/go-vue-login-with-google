@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/wpcodevo/google-github-oath2-golang/models"
+	"github.com/JuanFernandez87/go-vue-login-with-google/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

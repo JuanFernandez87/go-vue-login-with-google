@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/wpcodevo/google-github-oath2-golang/initializers"
+	"github.com/JuanFernandez87/go-vue-login-with-google/initializers"
 )
 
 type GoogleOauthToken struct {

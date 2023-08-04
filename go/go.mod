@@ -1,4 +1,4 @@
-module github.com/wpcodevo/google-github-oath2-golang
+module github.com/JuanFernandez87/go-vue-login-with-google
 
 go 1.19
 

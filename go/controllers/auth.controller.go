@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/wpcodevo/google-github-oath2-golang/initializers"
-	"github.com/wpcodevo/google-github-oath2-golang/models"
-	"github.com/wpcodevo/google-github-oath2-golang/utils"
+	"github.com/JuanFernandez87/go-vue-login-with-google/initializers"
+	"github.com/JuanFernandez87/go-vue-login-with-google/models"
+	"github.com/JuanFernandez87/go-vue-login-with-google/utils"
 )
 
 // SignUp User
